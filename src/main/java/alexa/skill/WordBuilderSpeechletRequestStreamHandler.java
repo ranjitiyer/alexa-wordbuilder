@@ -9,11 +9,7 @@ import java.util.Set;
 public class WordBuilderSpeechletRequestStreamHandler extends SpeechletRequestStreamHandler {
     private static final Set<String> supportedApplicationIds = new HashSet<String>();
     static {
-        /*
-         * This Id can be found on https://developer.amazon.com/edw/home.html#/ "Edit" the relevant
-         * Alexa Skill and put the relevant Application Ids in this Set.
-         */
-        supportedApplicationIds.add("amzn1.echo-sdk-ams.app.[unique-value-here]");
+        supportedApplicationIds.add("amzn1.echo-sdk-ams.app.6b2e3501-d16f-4bd5-a3a5-7e9dc0f6e7c1");
     }
 
     public WordBuilderSpeechletRequestStreamHandler() {
