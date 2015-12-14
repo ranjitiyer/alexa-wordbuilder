@@ -9,10 +9,11 @@ import java.util.Set;
 public class WordBuilderSpeechletRequestStreamHandler extends SpeechletRequestStreamHandler {
     private static final Set<String> supportedApplicationIds = new HashSet<String>();
     static {
-        supportedApplicationIds.add("amzn1.echo-sdk-ams.app.6b2e3501-d16f-4bd5-a3a5-7e9dc0f6e7c1");
+        supportedApplicationIds.add("amzn1.echo-sdk-ams.app.aa6d79df-d3b4-49d3-9834-aa3bdbc340df");
     }
 
     public WordBuilderSpeechletRequestStreamHandler() {
         super(new WorldBuilderSpeechlet(), supportedApplicationIds);
     }
+
 }
