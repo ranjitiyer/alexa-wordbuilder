@@ -1,16 +1,18 @@
 package alexa.skill;
 
+import alexa.skill.model.Word;
 import com.amazon.speech.slu.Intent;
 import com.amazon.speech.slu.Slot;
 import com.amazon.speech.speechlet.*;
 import com.amazon.speech.ui.PlainTextOutputSpeech;
 import com.amazon.speech.ui.Reprompt;
 import com.amazon.speech.ui.SimpleCard;
-import com.amazonaws.util.json.JSONObject;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClient;
+import com.amazonaws.services.dynamodbv2.datamodeling.DynamoDBMapper;
 import com.mashape.unirest.http.HttpResponse;
 import com.mashape.unirest.http.JsonNode;
 import com.mashape.unirest.http.Unirest;
-import com.mashape.unirest.http.exceptions.UnirestException;
+import org.apache.commons.lang3.RandomUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +24,10 @@ import java.util.*;
 public class WorldBuilderSpeechlet implements Speechlet {
 
     private static final Logger log = LoggerFactory.getLogger(WorldBuilderSpeechlet.class);
+
+    DynamoDBMapper mapper = new DynamoDBMapper(new AmazonDynamoDBClient());
+
+    Character[] charlist = new Character[] {'a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r','s','t','u','v','w','x','y','z'};
 
     static Map<String, Boolean> wordsMap = new HashMap<>();
     static Map<Character, List<String>> wordList = new HashMap() {{
@@ -36,9 +42,29 @@ public class WorldBuilderSpeechlet implements Speechlet {
         put('y', new ArrayList<>()); put('z', new ArrayList<>());
     }};
 
+    private String getRandomWord() {
+        List<String> words = wordList.get(charlist[RandomUtils.nextInt(0, 26)]);
+        return words.get(RandomUtils.nextInt(0, words.size()));
+    }
+
+    private boolean hasWordBeenUsed(Session session, String word) {
+        String key = session.getSessionId() + "_" + word;
+        Word wordObj = mapper.load(Word.class, key);
+        if (wordObj == null)
+            return false;
+        return wordObj.getHasBeenUsed();
+    }
+
+    private void markAsUsed(Session session, String word) {
+        Word wordObj = new Word();
+        wordObj.setKey(session.getSessionId() + "_" + word);
+        wordObj.setHasBeenUsed(true);
+        mapper.save(wordObj);
+    }
+
     static {
         try {
-            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("words.txt")));
+            BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream("words-old.txt")));
             String word;
             while ( (word = br.readLine()) != null) {
                 if (word.matches("^[a-z]*") && word.length() > 2) {
@@ -96,6 +122,9 @@ public class WorldBuilderSpeechlet implements Speechlet {
             String lastWord = (String) session.getAttribute("lastword");
             String meaning = getMeaning(lastWord);
 
+            if (meaning == null)
+                meaning = "I could not find the meaning for the word " + lastWord;
+
             // Create the Simple card content.
             SimpleCard card = new SimpleCard();
             card.setTitle("Meaning");
@@ -124,42 +153,70 @@ public class WorldBuilderSpeechlet implements Speechlet {
         // any cleanup logic goes here
     }
 
-    public SpeechletResponse wordIntentResponse(Intent intent, Session session) {
+    public SpeechletResponse wordIntentResponse(final Intent intent, final Session session) {
         Map<String, Slot> slots = intent.getSlots();
-
-        // Get the color slot from the list of slots.
         Slot wordSlot = slots.get("Word");
+
         String theirWord = wordSlot.getValue();
 
-        // check if this is a valid word
+        // check if it's a valid word
+        boolean alreadyUsed = hasWordBeenUsed(session, theirWord);
+        if (alreadyUsed) {
+            String alreadyUsedText = "Sorry, the word " + theirWord + " has already been used";
 
-        Character c = theirWord.charAt(theirWord.length()-1);
+            // Create the Simple card content.
+            SimpleCard card = new SimpleCard();
+            card.setTitle("Word");
+            card.setContent(alreadyUsedText);
 
-        List<String> words = wordList.get(c);
-        String myword = words.get(new Random().nextInt(words.size()));
+            // Create the plain text output.
+            PlainTextOutputSpeech speech = new PlainTextOutputSpeech();
+            speech.setText(alreadyUsedText);
 
-        session.setAttribute("lastword", myword);
+            // Create reprompt
+            Reprompt reprompt = new Reprompt();
+            reprompt.setOutputSpeech(speech);
+            return SpeechletResponse.newAskResponse(speech, reprompt, card);
 
-        String speechText = "My word is " + myword;
+        }
+        else {
+            Character c = theirWord.charAt(theirWord.length() - 1);
 
-        // Create the Simple card content.
-        SimpleCard card = new SimpleCard();
-        card.setTitle("Word");
-        card.setContent(speechText);
+            List<String> words = wordList.get(c);
+            String myword = words.get(new Random().nextInt(words.size()));
 
-        // Create the plain text output.
-        PlainTextOutputSpeech speech = new PlainTextOutputSpeech();
-        speech.setText(speechText);
+            session.setAttribute("lastword", myword);
 
-        // Create reprompt
-        Reprompt reprompt = new Reprompt();
-        reprompt.setOutputSpeech(speech);
+            String speechText = "My word is " + myword;
 
-        return SpeechletResponse.newAskResponse(speech, reprompt, card);
+            // Create the Simple card content.
+            SimpleCard card = new SimpleCard();
+            card.setTitle("Word");
+            card.setContent(speechText);
+
+            // Create the plain text output.
+            PlainTextOutputSpeech speech = new PlainTextOutputSpeech();
+            speech.setText(speechText);
+
+            // Create reprompt
+            Reprompt reprompt = new Reprompt();
+            reprompt.setOutputSpeech(speech);
+
+            // mark the word has having been used
+
+            // Lambda Runnable
+            Runnable markUsedTask = () -> {
+                markAsUsed(session, theirWord);
+            };
+            new Thread(markUsedTask).start();
+            return SpeechletResponse.newAskResponse(speech, reprompt, card);
+        }
 
     }
     public SpeechletResponse getStartResponse() {
-        String speechText = "anarchy";
+
+
+        String speechText = getRandomWord();
 
         // Create the Simple card content.
         SimpleCard card = new SimpleCard();
@@ -267,7 +324,7 @@ public class WorldBuilderSpeechlet implements Speechlet {
 
             org.json.JSONObject definition = response.getBody().getObject().getJSONArray("definitions").getJSONObject(0);
             return definition.getString("definition");
-        } catch (UnirestException ex) {
+        } catch (Exception ex) {
             ex.printStackTrace();
         }
         return null;
